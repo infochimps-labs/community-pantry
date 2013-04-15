@@ -12,7 +12,7 @@ To jump right into using Ironfan, follow our [Installation Instructions](https:/
 
 ## Index
 
-bare-pantry works together with the full Ironfan toolset:
+community-pantry works together with the full Ironfan toolset:
 
 
 ### Tools:
