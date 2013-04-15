@@ -1,9 +1,10 @@
-# Ironfan-Pantry: Infochimps' Battle-Hardened Collection of Chef Cookbooks
+# Community-Pantry: Unsupported Ironfan cookbooks
+# 
+This is the collection of cookbooks we don't currently use, but have in the past published along with Ironfan. We've removed them from our core pantry, but want them to remain available to the community at large, who might still be interested in using them.
 
 Ironfan, the foundation of The Infochimps Platform, is an expressive toolset for constructing scalable, resilient architectures. It works in the cloud, in the data center, and on your laptop, and it makes your system diagram visible and inevitable. Inevitable systems coordinate automatically to interconnect, removing the hassle of manual configuration of connection points (and the associated danger of human error).
 For more information about Ironfan and the Infochimps Platform, visit [infochimps.com](http://www.infochimps.com/).
 
-This repo is a simplified base repo that serves as "ancestor" for all Ironfan pantries.
 
 ## Getting Started
 
