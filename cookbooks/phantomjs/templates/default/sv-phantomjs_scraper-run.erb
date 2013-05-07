@@ -1,0 +1,5 @@
+#!/bin/bash
+ulimit -n 32768
+export DISPLAY=:<%= node[:xvfb][:display] %>
+exec 2>&1
+exec chpst -u phantomjs phantomjs <%= @options[:args] %> <%= @options[:script] %> <%= @options[:fifo] %> <%= @options[:output] %>

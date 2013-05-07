@@ -1,0 +1,14 @@
+= DESCRIPTION:
+
+This cookbook installs PhantomJS as well as scraper daemons running
+PhantomJS.
+
+= REQUIREMENTS:
+
+= ATTRIBUTES:
+
+= USAGE:
+
+Use the 'phantomjs::default' recipe to install PhantomJS locally.
+
+Use the 'phantomjs::scrapers' recipe to create PhantomJS scraper daemons.

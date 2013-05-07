@@ -1,0 +1,295 @@
+var fs              = require('fs');
+var Webpage         = require('webpage');
+
+var READ_INTERVAL   = 5000;	// time the reader will sleep after an empty read
+var SCRAPE_INTERVAL = 1000;	// time the scraper will sleep after an empty queue
+var REQUEST_TIMEOUT = 10000;    // time after which a running GET request will be killed
+
+var URLS            = [];       // URLs we've read in, waiting to be scraped
+var MAX_REQUESTS    = 256;      // maximum number of simultaneously running GET requests
+
+var INPUT           = null;
+var OUTPUT          = null;
+
+function RequestHash(obj) {
+    this.length = 0;
+    this.urls = {};
+    for (var u in obj) {
+	if (obj.hasOwnProperty(u)) {
+	    this.urls[u] = obj[u];
+	    this.length++;
+	}
+    }
+
+    this.kill = function(url, counter) {
+	window.clearTimeout(counter);
+	var html = this.html(url);
+	this.stop(url);
+	writeHTML(url, html, null, 'timeout');
+    }
+    
+    this.start = function(url) {
+	if (this.urls.hasOwnProperty(url)) {
+	    null;
+	} else {
+	    this.length++;
+	}
+	this.urls[url] = null;
+    }
+
+    this.set = function(url, page) {
+	if (this.urls.hasOwnProperty(url)) {
+	    this.urls[url] = page;
+	}
+    }
+
+    this.html = function(url) {
+	if (this.urls.hasOwnProperty(url)) {
+	    var page = this.urls[url];
+	    if (page && page != undefined) {
+		return page.content;
+	    } else {
+		return '';
+	    }
+	} else {
+	    return '';
+	}
+    }
+
+    this.stop = function(url) {
+	if (this.urls.hasOwnProperty(url)) {
+	    this.length-- ;
+	    if (this.length < 0) { this.length = 0 };
+	    var page = this.urls[url];
+	    if (page &&  page != undefined) {
+		page.release();
+	    }
+	    delete p;
+	    delete this.urls[url];
+	}
+    }
+
+    this.dump = function() {
+	for (var i in this.urls) {
+	    if (this.urls.hasOwnProperty(i)) {
+		console.error("  " + i);
+	    }
+	}
+    }
+}
+
+var REQUESTS = new RequestHash();
+
+function readURL() {
+    var line = INPUT.readLine();
+    // debugMessage("Read " + line)
+    if (line.length > 0) {
+	URLS.push(line);
+	readURL();
+    } else {
+	window.setTimeout(function() { readURL() }, READ_INTERVAL);
+    }
+}
+
+function scrapeURL() {
+    // debugMessage("Scraping... ");
+    if (REQUESTS.length < MAX_REQUESTS) {
+	var url = URLS.shift();
+	if (url) {
+	    REQUESTS.start(url);
+	    getRequest(url, 0);
+	    scrapeURL();
+	} else {
+	    if (REQUESTS.length == 0 && URLS.length == 0) {
+		if (OUTPUT != null) {
+		    OUTPUT.flush();
+		}
+		phantom.exit();
+	    } else {
+		window.setTimeout(function() {scrapeURL()}, SCRAPE_INTERVAL);
+	    }
+	}
+    } else {
+	window.setTimeout(function() {scrapeURL()}, SCRAPE_INTERVAL);
+    }
+}
+
+function getRequest(url, numRedirects, previousRedirect) {
+    var page         = Webpage.create();
+    var urlToScrape  = (previousRedirect || url);
+    var statusCode   = null;
+    var redirectedTo = null;
+    var counter      = null;
+
+    page.onAlert = function(message) {
+	// infoMessage("Alert\t" + message)
+    };
+    
+    page.onConsoleMessage = function(message, line, src) {
+	// infoMessage("Console\t" + message)
+    };
+    
+    page.onInitialized = function() {
+	// infoMessage("Init\t" + urlToScrape)
+    };
+    
+    page.onLoadStarted = function() {
+	counter = window.setTimeout(function() {
+	    REQUESTS.kill(url, counter);
+	}, REQUEST_TIMEOUT);
+	// infoMessage("LoadStarted\t" + urlToScrape);
+    };
+    
+    page.onResourceRequested = function(request) {
+	// infoMessage("Requested\t" + request.url);
+    };
+    
+    page.onResourceReceived = function(resource) {
+	if (resource.url == urlToScrape) {
+	    statusCode = resource.status;
+	    if ((resource.status == 301) || (resource.status == 302)) {
+		resource.headers.forEach(function(header) {
+		    if (header.name == 'Location' || header.name == 'location') {
+			redirectedTo = redirectURL(urlToScrape, unescape(header.value));;
+		    }
+		});
+	    }
+	}
+	// infoMessage("Received\t" + resource.url);
+    };
+
+    REQUESTS.set(url, page);
+
+    page.open(urlToScrape, function(status) {
+	window.clearTimeout(counter);
+	if (statusCode == 301 || statusCode == 302) {
+	    page.release();
+	    REQUESTS.stop(url);
+	    if ((numRedirects < 5)  && redirectedTo) {
+		// infoMessage("Redirect\t" + urlToScrape + "\t" + redirectedTo);
+		getRequest(url, numRedirects + 1, redirectedTo);
+	    } else {
+		if (numRedirects >= 5) {
+		    // errorMessage("Too many redirects for " + url);
+		    writeHTML(url, '', statusCode, 'too many redirects');
+		} else {
+		    // errorMessage("Could not find redirect location for " + url);
+		    writeHTML(url, '', statusCode, 'no redirect location');
+		}
+	    }
+	} else {
+	    var html = page.content;
+	    page.release();
+	    REQUESTS.stop(url);
+	    if (status == 'success' || statusCode == 200 || statusCode == 201) {
+    		// infoMessage("Success\t" + urlToScrape);
+    		writeHTML(url, html, statusCode, 'ok');
+	    } else {
+    		// infoMessage("Failure\t" + urlToScrape);
+    		writeHTML(url, html, statusCode, status);
+	    }
+	}
+    });
+}
+
+function writeHTML(url, html, status, message) {
+    var decoratedHTML       = new Object();
+    decoratedHTML.url       = url;
+    decoratedHTML.status    = status;
+    decoratedHTML.message   = message;
+    decoratedHTML.timestamp = (new Date()).getTime();
+    if (html != null) {
+	decoratedHTML.html   = html;
+    }
+    if (OUTPUT != null) {
+	OUTPUT.write(JSON.stringify(decoratedHTML));
+    } else {
+	console.log(JSON.stringify(decoratedHTML));
+    }
+}
+
+function timestamp() {
+    var now   = new Date();
+    return now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds() + '.' + now.getMilliseconds()
+}
+
+function urlSummary() {
+    return REQUESTS.length + ' ' + URLS.length;
+}
+
+function infoMessage(message) {
+    console.error("INFO\t" + timestamp() + "\t" + urlSummary() + "\t" + message);
+}
+
+function errorMessage(message) {
+    console.error("ERROR\t" + timestamp() + "\t" + message);
+}
+
+function debugMessage(message) {
+    console.error("DEBUG\t" + timestamp() + "\t" + urlSummary() + "\t" + message);
+}
+
+function openOutput(path) {
+    if (path == null) {
+	infoMessage("Writing data to stdout");
+	return fs.open('/dev/stdout', 'a');
+    }
+    try {
+	infoMessage("Writing data to " + path);
+	return fs.open(path, 'a');
+    } catch (e) {
+	errorMessage("Could not open " + path + " for writing.");
+	phantom.exit();
+    }
+}
+
+function openInput(path) {
+    try {
+	infoMessage("Reading data from " + path);
+	return fs.open(path, 'r');
+    } catch (e) {
+	errorMessage("Could not open " + path + " for reading.");
+	phantom.exit();
+    }
+}
+
+function domainName(url) {
+    return (url.match(':\/\/(.[^/]+)')[1] || '');
+}
+
+function redirectURL(originalURL, location) {
+    if (location.match('^http')) {
+	return location;
+    }
+    if (location.match('^/')) {
+	return 'http://' + domainName(originalURL) + location;
+    }
+    // Not going to try to work harder than we already have here.
+    return location;
+}
+
+// Start this thing up!
+function main() {
+    // usage
+    if (phantom.args.length > 2 || (phantom.args.length == 1 && phantom.args[0].match('-h'))) {
+	console.error("usage: phantomjs scraper.js [INPUT_PATH] [OUTPUT_PATH]");
+	phantom.exit();
+    }
+
+    // IO
+    if (phantom.args.length > 0) {
+	INPUT = openInput(phantom.args[0]);
+	if (phantom.args.length > 1) {
+	    OUTPUT = openOutput(phantom.args[1]);
+	}
+    } else {
+	INPUT = openInput('/dev/stdin');
+    }
+
+    // start
+    readURL();
+    scrapeURL();
+}
+
+main();
+
