@@ -1,0 +1,6 @@
+LoadPlugin "write_http"
+<Plugin write_http>
+  <URL "http://<%= @cube[:host] %>:<%= @cube[:port] %>/collectd">
+    Format "JSON"
+  </URL>
+</Plugin>

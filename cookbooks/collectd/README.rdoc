@@ -1,0 +1,6 @@
+= Collectd
+
+== Overview
+
+This cookbook provides recipes which install collectd and provides
+recipes and a definition to make installing plugins easy.
